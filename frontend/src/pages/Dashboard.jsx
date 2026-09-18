@@ -20,7 +20,7 @@ export default function Dashboard() {
     // 1. Check if an election is currently running to lock the UI
     const checkActiveElection = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com');
         if (response.ok) setIsElectionActive(true);
       } catch (error) {
         console.error("Error checking active election:", error);
@@ -30,7 +30,7 @@ export default function Dashboard() {
     // 2. Fetch the completed elections for the history list
     const fetchPastElections = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/elections/past');
+        const response = await fetch('https://school-election-evm-backend.onrender.com');
         if (response.ok) {
           const data = await response.json();
           setPastElections(data);
@@ -72,7 +72,7 @@ export default function Dashboard() {
   const handleInitializeElection = async () => {
     setIsSaving(true);
     try {
-      const response = await fetch('http://localhost:5000/api/elections', {
+      const response = await fetch('https://school-election-evm-backend.onrender.com', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,7 +104,7 @@ export default function Dashboard() {
   const handleDeleteElection = async (id, name) => {
     if (window.confirm(`Are you sure you want to permanently delete the "${name}" election results?`)) {
       try {
-        const response = await fetch(`http://localhost:5000/api/elections/${id}`, {
+        const response = await fetch(`https://school-election-evm-backend.onrender.com/api/elections/${id}`, {
           method: 'DELETE'
         });
 

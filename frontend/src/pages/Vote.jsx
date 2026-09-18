@@ -14,7 +14,7 @@ export default function Vote() {
     // 1. Fetch the active election from MongoDB
     const fetchActiveElection = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active');
         if (response.ok) {
           const data = await response.json();
           setElectionConfig(data);

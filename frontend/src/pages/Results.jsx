@@ -9,7 +9,7 @@ export default function Results() {
   useEffect(() => {
     const fetchElectionDetails = async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/elections/${id}`);
+        const response = await fetch(`https://school-election-evm-backend.onrender.com/api/elections/${id}`);
         if (response.ok) {
           setElection(await response.json());
         }

@@ -13,7 +13,7 @@ export default function Monitor() {
     // NEW: Fetch initial active election stats on load
     const fetchActiveStats = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active');
         if (response.ok) {
           const data = await response.json();
           setTotalVotes(data.totalVotesCast); // Set the real number from DB
@@ -56,7 +56,7 @@ export default function Monitor() {
   const handleEndElection = async () => {
     if (window.confirm("CRITICAL WARNING: Are you sure you want to permanently end this election?")) {
       try {
-        const response = await fetch('http://localhost:5000/api/elections/end', {
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/end', {
           method: 'POST'
         });
 
