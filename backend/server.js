@@ -11,7 +11,10 @@ const mongoose = require('mongoose');
 const app = express();
 
 // Standard Express Middlewares
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:5173", "https://school-evm.netlify.app"],
+    credentials: true
+}));
 app.use(express.json());
 
 mongoose.connect(process.env.MONGO_URI)
@@ -181,9 +184,9 @@ app.post('/api/auth/login', async (req, res) => {
 const server = http.createServer(app);
 
 // 2. Attach Socket.io to that HTTP server
-const io = new Server(server,{
+const io = require("socket.io")(server, {
     cors: {
-        origin: "http://localhost:5173",  // This is where our Vite React app will live
+        origin: ["http://localhost:5173", "https://school-evm.netlify.app"],
         methods: ["GET", "POST"]
     }
 });
