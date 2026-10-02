@@ -17,6 +17,7 @@ export default function Dashboard() {
 
   // GRAB THE SECURE TOKEN
   const token = localStorage.getItem('evm_admin_token');
+  const username = localStorage.getItem('evm_admin_user') || 'Admin';
 
   useEffect(() => {
     const checkActiveElection = async () => {
@@ -131,7 +132,7 @@ export default function Dashboard() {
       <header className="flex justify-between items-center py-6 border-b border-gray-200 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Admin Control Center</h1>
-          <p className="text-sm text-gray-500 mt-1">Logged in as Master Admin</p>
+          <p className="text-sm text-gray-500 mt-1">Logged in as: <span className="font-bold text-blue-600">{username}</span></p>
         </div>
         <button 
           onClick={() => {

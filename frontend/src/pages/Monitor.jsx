@@ -26,7 +26,10 @@ export default function Monitor() {
       }
     };
     
-    if (token) fetchActiveStats();
+    if (token) {
+      socket.emit('join_admin_room', token); // ADD THIS LINE
+      fetchActiveStats();
+    }
 
     socket.on('voter_finished', () => {
       setTabletStatus('locked');

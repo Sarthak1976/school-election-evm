@@ -33,8 +33,10 @@ export default function Vote() {
       }
     };
 
-    if (token) fetchActiveElection();
-    else setIsLoading(false); // If no token, stop loading and show error
+    if (token) {
+      socket.emit('join_admin_room', token); // ADD THIS LINE
+      fetchActiveElection();
+    } else setIsLoading(false);
 
     socket.on('unlock_tablet', () => {
       setIsLocked(false);
@@ -79,8 +81,8 @@ export default function Vote() {
     socket.emit('cast_vote', finalSelection);
 
     setTimeout(() => {
-      // Send them back to a safe screen and destroy back-button history
-      navigate('/login', { replace: true }); 
+      setShowSuccess(false);
+      setSelected([]);
     }, 3000);
   };
 

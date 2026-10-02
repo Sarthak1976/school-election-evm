@@ -215,46 +215,60 @@ const io = require("socket.io")(server, {
 
 // 3. The Socket Connection Hub
 // We will update this in Phase 2 so WebSockets are isolated per Admin
+// 3. The Socket Connection Hub (Fully Isolated)
 io.on('connection', (socket) => {
   console.log('A device connected! ID:', socket.id);
 
-  // --- RELAY 1: Phone unlocks Tablet ---
-  socket.on('admin_unlock_tablet', () => {
-    console.log('Relaying: Unlock Tablet');
-    socket.broadcast.emit('unlock_tablet'); 
-  });
-
-  // --- RELAY 2: Phone discards vote (Locks Tablet) ---
-  socket.on('admin_discard_vote', () => {
-    console.log('Relaying: Discard Vote / Lock Tablet');
-    socket.broadcast.emit('lock_tablet');
-  });
-
-  // --- RELAY 3: Tablet submits a vote ---
-  socket.on('cast_vote', async (selections) => {
-    console.log('Vote received for candidates:', selections);
-    
+  // 1. Put the socket into a private room based on the Admin's ID
+  socket.on('join_admin_room', (token) => {
     try {
-      // Temporarily left as is - will be fixed in Phase 2
-      const activeElection = await Election.findOne({ isActive: true });
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      socket.join(decoded.id); // Join a private room
+      socket.adminId = decoded.id; // Save the ID to the socket for later
+      console.log(`Socket joined private room: ${decoded.id}`);
+    } catch (err) {
+      console.log('Socket provided invalid token');
+    }
+  });
+
+  // 2. Unlock ONLY the tablets in this Admin's specific room
+  socket.on('admin_unlock_tablet', () => {
+    if (socket.adminId) {
+      socket.to(socket.adminId).emit('unlock_tablet'); 
+    }
+  });
+
+  // 3. Lock ONLY the tablets in this Admin's specific room
+  socket.on('admin_discard_vote', () => {
+    if (socket.adminId) {
+      socket.to(socket.adminId).emit('lock_tablet');
+    }
+  });
+
+  // 4. Save the vote to THIS specific Admin's database entry
+  socket.on('cast_vote', async (selections) => {
+    if (!socket.adminId) return; // Ignore if they aren't in a room
+
+    try {
+      // Find the active election that belongs to THIS specific Admin
+      const activeElection = await Election.findOne({ isActive: true, adminId: socket.adminId });
       
       if (activeElection) {
         activeElection.totalVotesCast += 1;
         selections.forEach(candidateId => {
           const candidate = activeElection.candidates.id(candidateId);
-          if (candidate) {
-            candidate.votes += 1;
-          }
+          if (candidate) candidate.votes += 1;
         });
 
         await activeElection.save();
-        console.log('Vote successfully saved to database!');
+        console.log('Vote successfully saved to isolated database!');
       }
     } catch (error) {
-      console.error('Error saving vote to database:', error);
+      console.error('Error saving vote:', error);
     }
 
-    socket.broadcast.emit('voter_finished');
+    // Tell ONLY the phones in this Admin's room that the voter finished
+    socket.to(socket.adminId).emit('voter_finished');
   });
 
   socket.on('disconnect', () => {
