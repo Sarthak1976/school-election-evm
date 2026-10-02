@@ -1,4 +1,4 @@
-import { useState,useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -11,26 +11,30 @@ export default function Dashboard() {
   const [candidates, setCandidates] = useState([]);
 
   const [isElectionActive, setIsElectionActive] = useState(false);
-  const [isSaving, setIsSaving] = useState(false); // Tracks the network request
+  const [isSaving, setIsSaving] = useState(false); 
   
   const [pastElections, setPastElections] = useState([]);
 
-  // Fetch data when the Dashboard loads
+  // GRAB THE SECURE TOKEN
+  const token = localStorage.getItem('evm_admin_token');
+
   useEffect(() => {
-    // 1. Check if an election is currently running to lock the UI
     const checkActiveElection = async () => {
       try {
-        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) setIsElectionActive(true);
       } catch (error) {
         console.error("Error checking active election:", error);
       }
     };
 
-    // 2. Fetch the completed elections for the history list
     const fetchPastElections = async () => {
       try {
-        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/past');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/past', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) {
           const data = await response.json();
           setPastElections(data);
@@ -40,9 +44,11 @@ export default function Dashboard() {
       }
     };
 
-    checkActiveElection();
-    fetchPastElections();
-  }, []);
+    if (token) {
+      checkActiveElection();
+      fetchPastElections();
+    }
+  }, [token]);
 
   const canProceed = electionName.trim() !== '' && candidates.length > maxSelections;
 
@@ -68,13 +74,15 @@ export default function Dashboard() {
     setCandidateSymbol('');
   };
 
-  // --- Save Election to MongoDB ---
   const handleInitializeElection = async () => {
     setIsSaving(true);
     try {
       const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
         body: JSON.stringify({
           name: electionName,
           maxSelections: maxSelections,
@@ -86,7 +94,6 @@ export default function Dashboard() {
         setIsElectionActive(true);
         alert('Success! The election is now live in the database.');
       } else if (response.status === 400) {
-        // Catch the duplicate name error specifically
         const errorData = await response.json();
         alert(`Failed: ${errorData.message}`);
       } else {
@@ -100,16 +107,15 @@ export default function Dashboard() {
     }
   };
 
-  // NEW: Delete an election from history
   const handleDeleteElection = async (id, name) => {
     if (window.confirm(`Are you sure you want to permanently delete the "${name}" election results?`)) {
       try {
         const response = await fetch(`https://school-election-evm-backend.onrender.com/api/elections/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
         });
 
         if (response.ok) {
-          // Instantly remove it from the screen without refreshing the page
           setPastElections(pastElections.filter(election => election._id !== id));
         } else {
           alert('Failed to delete the election.');
@@ -241,7 +247,6 @@ export default function Dashboard() {
             <h2 className="text-xl font-semibold text-gray-800 mb-6">3. Election Controls</h2>
             
             <div className="space-y-4">
-              {/* Step 1: Initialize Database */}
               {!isElectionActive ? (
                 <button 
                   onClick={handleInitializeElection}
@@ -260,7 +265,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Step 2: Open Interfaces (Only unlock if election is active) */}
               <button 
                 onClick={() => navigate('/vote')}
                 disabled={!isElectionActive}
@@ -308,11 +312,6 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-500 text-center py-6">No completed elections yet.</p>
               ) : (
                 pastElections.map((election) => {
-                  // Calculate the winner (candidate with the highest votes)
-                  const winner = election.candidates.reduce((prev, current) => {
-                    return (prev.votes > current.votes) ? prev : current;
-                  }, election.candidates[0]); // Default to first candidate if 0 votes
-
                   return (
                     <div 
                       key={election._id} 
@@ -327,7 +326,7 @@ export default function Dashboard() {
                           </span>
                           <button 
                             onClick={(e) => {
-                              e.stopPropagation(); // Prevents opening the results page when deleting
+                              e.stopPropagation(); 
                               handleDeleteElection(election._id, election.name);
                             }}
                             className="text-gray-400 hover:text-red-600 transition-colors z-10"

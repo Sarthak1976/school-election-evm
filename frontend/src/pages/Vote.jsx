@@ -1,25 +1,30 @@
 import { useState, useEffect } from 'react';
 import { socket } from '../socket';
+import { useNavigate } from 'react-router-dom'; 
 
 export default function Vote() {
+  const navigate = useNavigate();
   const [isLocked, setIsLocked] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [selected, setSelected] = useState([]);
   
-  // Database State
   const [electionConfig, setElectionConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // GRAB THE SECURE TOKEN
+  const token = localStorage.getItem('evm_admin_token');
+
   useEffect(() => {
-    // 1. Fetch the active election from MongoDB
     const fetchActiveElection = async () => {
       try {
-        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) {
           const data = await response.json();
           setElectionConfig(data);
         } else {
-          console.error('No active election found in database.');
+          console.error('No active election found in database or unauthorized.');
         }
       } catch (error) {
         console.error('Failed to fetch election data:', error);
@@ -28,9 +33,9 @@ export default function Vote() {
       }
     };
 
-    fetchActiveElection();
+    if (token) fetchActiveElection();
+    else setIsLoading(false); // If no token, stop loading and show error
 
-    // 2. Socket Listeners for Phone Commands
     socket.on('unlock_tablet', () => {
       setIsLocked(false);
       setSelected([]);
@@ -45,7 +50,7 @@ export default function Vote() {
       socket.off('unlock_tablet');
       socket.off('lock_tablet');
     };
-  }, []);
+  }, [token]);
 
   const toggleSelection = (candidateId) => {
     if (!electionConfig) return;
@@ -59,7 +64,6 @@ export default function Vote() {
 
     setSelected(newSelection);
 
-    // Auto-Submit Logic
     if (newSelection.length === electionConfig.maxSelections) {
       submitVote(newSelection);
     }
@@ -75,14 +79,24 @@ export default function Vote() {
     socket.emit('cast_vote', finalSelection);
 
     setTimeout(() => {
-      setShowSuccess(false);
-      setSelected([]);
+      // Send them back to a safe screen and destroy back-button history
+      navigate('/login', { replace: true }); 
     }, 3000);
   };
 
-  // --- UI STATES ---
   if (isLoading) {
     return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white text-2xl">Loading Election Data...</div>;
+  }
+
+  // Security Wall UI for the Tablet
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white p-4 text-center">
+        <h1 className="text-4xl font-bold mb-4">Unauthorized</h1>
+        <p className="text-gray-400">You must log into the Admin account on this device first to load your school's ballot.</p>
+        <button onClick={() => navigate('/login')} className="mt-6 px-6 py-2 bg-blue-600 rounded-lg">Go to Login</button>
+      </div>
+    );
   }
 
   if (!electionConfig) {
@@ -132,7 +146,7 @@ export default function Vote() {
       <main className="flex-1 max-w-6xl mx-auto w-full p-8 flex flex-col justify-center">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
           {electionConfig.candidates.map((cand) => {
-            const isSelected = selected.includes(cand._id); // Notice we use _id here
+            const isSelected = selected.includes(cand._id);
             return (
               <div 
                 key={cand._id}

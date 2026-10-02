@@ -5,27 +5,29 @@ import { socket } from '../socket';
 export default function Monitor() {
   const navigate = useNavigate();
   
-  // UI State (We will sync this with the backend in Phase 4)
-  const [tabletStatus, setTabletStatus] = useState('locked'); // 'locked' | 'voting'
+  const [tabletStatus, setTabletStatus] = useState('locked'); 
   const [totalVotes, setTotalVotes] = useState(0);
 
+  // GRAB THE SECURE TOKEN
+  const token = localStorage.getItem('evm_admin_token');
+
   useEffect(() => {
-    // NEW: Fetch initial active election stats on load
     const fetchActiveStats = async () => {
       try {
-        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active');
+        const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/active', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) {
           const data = await response.json();
-          setTotalVotes(data.totalVotesCast); // Set the real number from DB
+          setTotalVotes(data.totalVotesCast); 
         }
       } catch (error) {
         console.error('Error fetching initial stats:', error);
       }
     };
     
-    fetchActiveStats();
+    if (token) fetchActiveStats();
 
-    // Listen for the backend signal that a student finished
     socket.on('voter_finished', () => {
       setTabletStatus('locked');
       setTotalVotes((prev) => prev + 1); 
@@ -34,15 +36,10 @@ export default function Monitor() {
     return () => {
       socket.off('voter_finished');
     };
-  }, []);
-
-  // --- Button Handlers ---
+  }, [token]);
 
   const handleAllowNext = () => {
-    // 1. Instantly update UI so your father knows it worked
     setTabletStatus('voting');
-    
-    // 2. Send the instant unlock signal through the WebSocket
     socket.emit('admin_unlock_tablet');
   };
 
@@ -57,16 +54,16 @@ export default function Monitor() {
     if (window.confirm("CRITICAL WARNING: Are you sure you want to permanently end this election?")) {
       try {
         const response = await fetch('https://school-election-evm-backend.onrender.com/api/elections/end', {
-          method: 'POST'
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
         });
 
         if (response.ok) {
-          const data = await response.json(); // Read the response body we just added
+          const data = await response.json(); 
           alert("Election ended successfully! Generating results...");
           socket.emit('admin_discard_vote'); 
           
-          // NEW: Redirect to the specific results page
-          navigate(`/admin/results/${data.election._id}`);
+          navigate(`/admin/results/${data.election._id}`, { replace: true });
         } else {
           alert("Failed to end election. Check connection.");
         }
@@ -78,8 +75,6 @@ export default function Monitor() {
   
   return (
     <div className="max-w-md mx-auto px-4 py-8 min-h-screen flex flex-col">
-      
-      {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Live Election</h1>
         <div className="px-3 py-1 bg-gray-900 text-white text-sm font-bold rounded-full shadow-sm">
@@ -87,7 +82,6 @@ export default function Monitor() {
         </div>
       </div>
 
-      {/* Live Status Indicator */}
       <div className={`p-6 rounded-2xl mb-8 border-2 transition-all duration-300 ${
         tabletStatus === 'locked' 
           ? 'bg-amber-50 border-amber-200' 
@@ -108,10 +102,7 @@ export default function Monitor() {
         )}
       </div>
 
-      {/* Main Control Buttons */}
       <div className="flex-1 space-y-4">
-        
-        {/* The Big Unlock Button */}
         <button 
           onClick={handleAllowNext}
           disabled={tabletStatus === 'voting'}
@@ -124,7 +115,6 @@ export default function Monitor() {
           {tabletStatus === 'voting' ? 'Waiting for Student...' : 'Allow Next Voter'}
         </button>
 
-        {/* The Discard Button */}
         <button 
           onClick={handleDiscardVote}
           disabled={tabletStatus === 'locked'}
@@ -136,10 +126,8 @@ export default function Monitor() {
         >
           Discard Current Vote
         </button>
-
       </div>
 
-      {/* Danger Zone: End Election */}
       <div className="mt-12 pt-6 border-t border-gray-200">
         <button 
           onClick={handleEndElection}
@@ -148,7 +136,6 @@ export default function Monitor() {
           End Election Permanently
         </button>
       </div>
-
     </div>
   );
 }
