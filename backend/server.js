@@ -22,28 +22,48 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('MongoDB connection error:', err));
 
 
+// The Security Bouncer
+const authMiddleware = (req, res, next) => {
+  // Grab the token from the request header
+  const token = req.header('Authorization');
+  if (!token) return res.status(401).json({ message: "Access denied. No token provided." });
+
+  try {
+    // Verify the token using your secret key
+    const decoded = jwt.verify(token.replace("Bearer ", ""), process.env.JWT_SECRET);
+    req.adminId = decoded.id; // Attach the admin's ID to the request
+    next(); // Let them pass
+  } catch (err) {
+    res.status(400).json({ message: "Invalid token." });
+  }
+};
+
+
 const Election = require('./models/Election');
 
 // --- API ROUTES ---
 
 // 1. Create a new election
-app.post('/api/elections', async (req, res) => {
+app.post('/api/elections', authMiddleware, async (req, res) => {
   try {
+    // Added adminId here so two DIFFERENT schools can both have an election named "Student Council 2026"
     const existingElection = await Election.findOne({ 
-      name: { $regex: new RegExp(`^${req.body.name}$`, 'i') } // Case-insensitive exact match
+      name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
+      adminId: req.adminId 
     });
 
     if (existingElection) {
-      return res.status(400).json({ message: "An election with this exact name already exists!" });
+      return res.status(400).json({ message: "You already have an election with this exact name!" });
     }
-    // First, mark all past elections as inactive so only one runs at a time
-    await Election.updateMany({}, { isActive: false });
+    // Only deactivate THIS admin's past elections
+    await Election.updateMany({ adminId: req.adminId }, { isActive: false });
 
     // Create the new election
     const newElection = new Election({
       name: req.body.name,
       maxSelections: req.body.maxSelections,
       candidates: req.body.candidates,
+      adminId: req.adminId, // Associate the election with the logged-in admin
       isActive: true
     });
 
@@ -56,9 +76,10 @@ app.post('/api/elections', async (req, res) => {
 });
 
 // 2. Get the currently active election
-app.get('/api/elections/active', async (req, res) => {
+// Added authMiddleware and adminId filter
+app.get('/api/elections/active', authMiddleware, async (req, res) => {
   try {
-    const activeElection = await Election.findOne({ isActive: true });
+    const activeElection = await Election.findOne({ isActive: true, adminId: req.adminId });
     if (!activeElection) {
       return res.status(404).json({ message: "No active election found" });
     }
@@ -70,9 +91,9 @@ app.get('/api/elections/active', async (req, res) => {
 });
 
 // 3. End the currently active election
-app.post('/api/elections/end', async (req, res) => {
+app.post('/api/elections/end', authMiddleware, async (req, res) => {
   try {
-    const activeElection = await Election.findOne({ isActive: true });
+    const activeElection = await Election.findOne({ isActive: true, adminId: req.adminId });
     
     if (!activeElection) {
       return res.status(400).json({ message: "No active election to end." });
@@ -81,7 +102,6 @@ app.post('/api/elections/end', async (req, res) => {
     activeElection.isActive = false;
     await activeElection.save();
 
-    //Return the ended election so the frontend knows its ID
     res.status(200).json({ message: "Election ended successfully!", election: activeElection });
   } catch (error) {
     console.error("Error ending election:", error);
@@ -90,11 +110,9 @@ app.post('/api/elections/end', async (req, res) => {
 });
 
 // 4. Get all past (inactive) elections
-app.get('/api/elections/past', async (req, res) => {
+app.get('/api/elections/past', authMiddleware, async (req, res) => {
   try {
-    // .find({ isActive: false }) grabs ended elections
-    // .sort({ createdAt: -1 }) ensures the newest ones appear at the top
-    const pastElections = await Election.find({ isActive: false }).sort({ createdAt: -1 });
+    const pastElections = await Election.find({ isActive: false, adminId: req.adminId }).sort({ createdAt: -1 });
     res.status(200).json(pastElections);
   } catch (error) {
     console.error("Error fetching past elections:", error);
@@ -103,11 +121,12 @@ app.get('/api/elections/past', async (req, res) => {
 });
 
 // 5. Delete a past election
-app.delete('/api/elections/:id', async (req, res) => {
+// Added authMiddleware and switched to findOneAndDelete to enforce ownership
+app.delete('/api/elections/:id', authMiddleware, async (req, res) => {
   try {
-    const deletedElection = await Election.findByIdAndDelete(req.params.id);
+    const deletedElection = await Election.findOneAndDelete({ _id: req.params.id, adminId: req.adminId });
     if (!deletedElection) {
-      return res.status(404).json({ message: "Election not found" });
+      return res.status(404).json({ message: "Election not found or you don't have permission to delete it" });
     }
     res.status(200).json({ message: "Election deleted successfully" });
   } catch (error) {
@@ -117,9 +136,10 @@ app.delete('/api/elections/:id', async (req, res) => {
 });
 
 // 6. Get a specific election by ID
-app.get('/api/elections/:id', async (req, res) => {
+// Added authMiddleware and ownership check
+app.get('/api/elections/:id', authMiddleware, async (req, res) => {
   try {
-    const election = await Election.findById(req.params.id);
+    const election = await Election.findOne({ _id: req.params.id, adminId: req.adminId });
     if (!election) {
       return res.status(404).json({ message: "Election not found" });
     }
@@ -194,13 +214,13 @@ const io = require("socket.io")(server, {
 
 
 // 3. The Socket Connection Hub
+// We will update this in Phase 2 so WebSockets are isolated per Admin
 io.on('connection', (socket) => {
   console.log('A device connected! ID:', socket.id);
 
   // --- RELAY 1: Phone unlocks Tablet ---
   socket.on('admin_unlock_tablet', () => {
     console.log('Relaying: Unlock Tablet');
-    // Broadcast tells the tablet to unlock
     socket.broadcast.emit('unlock_tablet'); 
   });
 
@@ -215,23 +235,18 @@ io.on('connection', (socket) => {
     console.log('Vote received for candidates:', selections);
     
     try {
-      // 1. Find the currently active election in the database
+      // Temporarily left as is - will be fixed in Phase 2
       const activeElection = await Election.findOne({ isActive: true });
       
       if (activeElection) {
-        // 2. Increment the total vote counter
         activeElection.totalVotesCast += 1;
-        
-        // 3. Loop through the submitted IDs and add 1 vote to each chosen candidate
         selections.forEach(candidateId => {
-          // Mongoose allows us to search inside the candidates array by ID
           const candidate = activeElection.candidates.id(candidateId);
           if (candidate) {
             candidate.votes += 1;
           }
         });
 
-        // 4. Save the updated counts back to MongoDB
         await activeElection.save();
         console.log('Vote successfully saved to database!');
       }
@@ -239,7 +254,6 @@ io.on('connection', (socket) => {
       console.error('Error saving vote to database:', error);
     }
 
-    // 5. Tell the phone that the voter is finished
     socket.broadcast.emit('voter_finished');
   });
 
@@ -257,4 +271,3 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-

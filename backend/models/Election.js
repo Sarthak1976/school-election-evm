@@ -7,6 +7,7 @@ const candidateSchema = new mongoose.Schema({
 });
 
 const electionSchema = new mongoose.Schema({
+  adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   name: { type: String, required: true },
   maxSelections: { type: Number, required: true, default: 1 },
   candidates: [candidateSchema],
