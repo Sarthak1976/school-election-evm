@@ -5,11 +5,14 @@ export default function Results() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [election, setElection] = useState(null);
+  const token = localStorage.getItem('evm_admin_token');
 
   useEffect(() => {
     const fetchElectionDetails = async () => {
       try {
-        const response = await fetch(`https://school-election-evm-backend.onrender.com/api/elections/${id}`);
+        const response = await fetch(`https://school-election-evm-backend.onrender.com/api/elections/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
         if (response.ok) {
           setElection(await response.json());
         }
